@@ -10,7 +10,7 @@ cron (every 60 s) -> scripts/monitor.js
    |-- honeypot.is /v2/IsHoneypot                                                    -> sell simulation, taxes (V2/V3 only)
    |-- eth_getLogs on the token / pool / PositionManager                             -> holders, LP ownership, rug detection
    '-- Telegram Bot API                                                              -> alerts
-state: data/state.json   output: data/new-tokens.jsonl, data/outcomes.jsonl
+state: data/state.json (also running peak/trough per watched token)   output: data/new-tokens.jsonl, data/outcomes.jsonl
 ```
 
 ## Design decisions

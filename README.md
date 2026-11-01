@@ -27,7 +27,7 @@ Each run of `scripts/monitor.js`:
 3. A token is **fresh** if it had no contract code `MAX_TOKEN_AGE_MIN` minutes (default 60) before its pool was created. Older tokens that just got a new pool are registered but not reported.
 4. Fresh tokens wait up to `DEX_WAIT_MIN` minutes for DexScreener to index the pool (liquidity, price, volume), then go through the **risk filters** ([docs/FILTERS.md](docs/FILTERS.md)): impersonation, clones, liquidity, honeypot simulation, contract flags, holder concentration, LP ownership and rug-pull (liquidity removal) detection.
 5. Every evaluated token is appended to `data/new-tokens.jsonl` with its score and reasons. Tokens that pass are sent to Telegram (failed deliveries are retried on the next run).
-6. Follow-up: each evaluated token is checked again at **1h, 6h and 24h** (DexScreener liquidity/price) and appended to `data/outcomes.jsonl`. This is the data for tuning the filters.
+6. Follow-up: each evaluated token is checked again at **1h, 6h and 24h** (DexScreener liquidity/price) and appended to `data/outcomes.jsonl`. In between, every run batch-samples the price/liquidity of tokens evaluated in the last 24 h to keep their running peak and trough, which are stored in each outcome record. This is the data for tuning the filters (`node scripts/analyze.js` summarises it).
 
 Why on-chain events and not DexScreener as the source: DexScreener has no "new pools" endpoint and only lists pools after indexing them (a few minutes), so it is used only for enrichment.
 
@@ -80,7 +80,7 @@ macOS caveats:
 | File | Content |
 |---|---|
 | `new-tokens.jsonl` | One JSON line per evaluated token: token, pool, creator, DexScreener data, score, reasons, holders, LP analysis, `alerted` |
-| `outcomes.jsonl` | Follow-up at 1h / 6h / 24h: liquidity and price, with the score the token got |
+| `outcomes.jsonl` | Follow-up at 1h / 6h / 24h: liquidity and price, with the score the token got, plus baseline, peak and trough price/liquidity since evaluation |
 | `state.json` | Registry, last block, pending queue, 48h launch history, Telegram retry queue |
 | `monitor.log` | Cron output |
 

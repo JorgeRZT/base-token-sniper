@@ -23,6 +23,9 @@ const OUT_FILE = path.join(DATA, "new-tokens.jsonl");
 const OUTCOMES_FILE = path.join(DATA, "outcomes.jsonl");
 const CHECKPOINT_HOURS = [1, 6, 24]; // follow-up checks on every evaluated token
 const MAX_CHECKS_PER_RUN = 40;
+const PEAK_BATCH = 30; // DexScreener batch endpoint accepts up to 30 addresses
+const PEAK_MAX_BATCHES_PER_RUN = 10; // peak/trough sampling budget per run (rotates through the watch list)
+const PEAK_WINDOW_HOURS = 24; // keep sampling price/liquidity for this long after evaluation
 
 const MAX_TOKEN_AGE_MIN = Number(process.env.MAX_TOKEN_AGE_MIN || 60); // "just deployed" window
 const FIRST_RUN_LOOKBACK = Number(process.env.FIRST_RUN_LOOKBACK || 150); // blocks (~5 min) on first run
@@ -78,6 +81,37 @@ async function dexscreener(token) {
     const best = pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
     return { liquidityUsd: best.liquidity?.usd ?? null, priceUsd: best.priceUsd ?? null, volume24h: best.volume?.h24 ?? null, url: best.url };
   } catch { return null; }
+}
+
+// Batch lookup (<= 30 tokens per call). Returns Map(lowercase token -> {liquidityUsd, priceUsd}) for the tokens DexScreener has indexed.
+async function dexscreenerBatch(tokens) {
+  const out = new Map();
+  try {
+    const r = await fetch(`https://api.dexscreener.com/tokens/v1/base/${tokens.join(",")}`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return out;
+    for (const pr of (await r.json()).filter((x) => x.dexId === "uniswap" && x.baseToken?.address)) {
+      const k = pr.baseToken.address.toLowerCase(), liq = pr.liquidity?.usd || 0;
+      if (!out.has(k) || liq > out.get(k).liq) out.set(k, { liq, liquidityUsd: pr.liquidity?.usd ?? null, priceUsd: pr.priceUsd ?? null });
+    }
+  } catch {}
+  return out;
+}
+
+// Fold one DexScreener sample into the token's running peak/trough (used to measure what could really have been captured).
+function track(w, d) {
+  w.lastSample = Date.now();
+  if (!d) return;
+  const price = Number(d.priceUsd), liq = Number(d.liquidityUsd);
+  if (price > 0) {
+    if (!(w.p0 > 0)) w.p0 = price; // baseline = first price seen (the one at evaluation, or the first sample if it was not indexed yet)
+    if (!(price <= (w.pMax || 0))) { w.pMax = price; w.pMaxAt = Date.now(); }
+    if (!(price >= (w.pMin ?? Infinity))) w.pMin = price;
+  }
+  if (liq > 0) {
+    if (!(w.l0 > 0)) w.l0 = liq;
+    if (!(liq <= (w.lMax || 0))) w.lMax = liq;
+    if (!(liq >= (w.lMin ?? Infinity))) w.lMin = liq;
+  }
 }
 
 function buildMessage(r) {
@@ -169,6 +203,7 @@ async function main() {
     delete state.pending[key];
     state.launches.push({ token: key, creator: p.creator, sym: norm(info.symbol), ts: Date.now() });
     state.watch[key] = { token: p.token, uniswap: p.version, score: verdict.score, level: verdict.level, reject: verdict.reject, t0: Date.now(), done: [] };
+    track(state.watch[key], dex); // baseline price/liquidity at evaluation
 
     const record = {
       detectedAt: new Date().toISOString(), uniswap: p.version, block: p.block, token: info,
@@ -188,6 +223,17 @@ async function main() {
   const cutoff = Date.now() - 48 * 3600 * 1000;
   state.launches = state.launches.filter((l) => l.ts > cutoff); // keep 48h of launch history
 
+  // 3a. peak/trough sampling: batch-query the tokens evaluated in the last PEAK_WINDOW_HOURS, least recently sampled first
+  const sampling = Object.values(state.watch)
+    .filter((w) => Date.now() - w.t0 < PEAK_WINDOW_HOURS * 3600e3)
+    .sort((a, b) => (a.lastSample || 0) - (b.lastSample || 0))
+    .slice(0, PEAK_BATCH * PEAK_MAX_BATCHES_PER_RUN);
+  for (let i = 0; i < sampling.length; i += PEAK_BATCH) {
+    const chunk = sampling.slice(i, i + PEAK_BATCH);
+    const res = await dexscreenerBatch(chunk.map((w) => w.token));
+    for (const w of chunk) track(w, res.get(w.token.toLowerCase()) ?? null);
+  }
+
   // 3b. follow-up: what happened to each evaluated token after 1h / 6h / 24h (data for tuning the filters)
   let checks = 0;
   for (const [key, w] of Object.entries(state.watch)) {
@@ -195,9 +241,14 @@ async function main() {
       if (w.done.includes(h) || Date.now() - w.t0 < h * 3600e3 || checks >= MAX_CHECKS_PER_RUN) continue;
       checks++;
       const d = await dexscreener(w.token);
+      track(w, d);
       fs.appendFileSync(OUTCOMES_FILE, JSON.stringify({
         ts: new Date().toISOString(), token: w.token, uniswap: w.uniswap, score: w.score, level: w.level, reject: w.reject,
         checkpointHours: h, liquidityUsd: d?.liquidityUsd ?? null, priceUsd: d?.priceUsd ?? null, volume24h: d?.volume24h ?? null, found: Boolean(d),
+        // running extremes since evaluation (sampled about every 1-3 min); baseline = first price/liquidity seen
+        baselinePriceUsd: w.p0 ?? null, baselineLiquidityUsd: w.l0 ?? null,
+        peakPriceUsd: w.pMax ?? null, peakPriceAfterMin: w.pMaxAt ? Math.round((w.pMaxAt - w.t0) / 60000) : null, minPriceUsd: w.pMin ?? null,
+        peakLiquidityUsd: w.lMax ?? null, minLiquidityUsd: w.lMin ?? null,
       }) + "\n");
       w.done.push(h);
     }

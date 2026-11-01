@@ -49,7 +49,7 @@ Levels: 🟢 ≥ 70, 🟡 ≥ `MIN_SCORE`, 🟠 below it (not alerted), 🔴 rej
 
 ## Measuring the filters
 
-`data/outcomes.jsonl` records liquidity and price at 1h / 6h / 24h for every evaluated token together with the score it received, so the thresholds can be tuned against what really happened.
+`data/outcomes.jsonl` records liquidity and price at 1h / 6h / 24h for every evaluated token together with the score it received, so the thresholds can be tuned against what really happened. Each record also carries the baseline price/liquidity and the peak and trough seen since evaluation (sampled about every 1-3 minutes), so you can tell what could have been captured, not only where the price ended up. Run `node scripts/analyze.js` for a summary (serial vs non-serial creators, per version).
 
 ## Tuning
 

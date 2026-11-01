@@ -45,6 +45,16 @@ function report(name, set) {
     console.log(`  [${h}h] with outcome ${wo.length}, found ${found.length} | liquidity collapsed(<20%) ${collapsed.length}/${withLiq.length}, grew(>1.5x) ${grew.length}`
       + ` | price >=2x ${ratios.filter((x) => x >= 2).length}, >=5x ${ratios.filter((x) => x >= 5).length}, <0.5x ${ratios.filter((x) => x < 0.5).length} (of ${ratios.length})`
       + ` | vol24h>1000: ${vol.filter((v) => v > 1000).length}, <10: ${vol.filter((v) => v < 10).length}`);
+    // Peak/trough since evaluation (only present on outcomes recorded after the peak tracking was added).
+    const pk = found.filter((t) => oc(t, h).baselinePriceUsd > 0 && oc(t, h).peakPriceUsd > 0);
+    if (pk.length) {
+      const up = pk.map((t) => oc(t, h).peakPriceUsd / oc(t, h).baselinePriceUsd);
+      const dn = pk.map((t) => oc(t, h).minPriceUsd / oc(t, h).baselinePriceUsd);
+      const lq = found.filter((t) => oc(t, h).baselineLiquidityUsd > 0 && oc(t, h).minLiquidityUsd != null);
+      console.log(`  [${h}h] with peak data ${pk.length}: peak/baseline >=2x ${up.filter((x) => x >= 2).length}, >=5x ${up.filter((x) => x >= 5).length}, median peak ${med(up).toFixed(2)}x`
+        + ` | trough/baseline <0.5x ${dn.filter((x) => x < 0.5).length} | liquidity min <20% of baseline ${lq.filter((t) => oc(t, h).minLiquidityUsd < oc(t, h).baselineLiquidityUsd * 0.2).length}/${lq.length}`
+        + ` | median minutes to peak ${med(pk.map((t) => oc(t, h).peakPriceAfterMin).filter((x) => x != null))}`);
+    }
     // Collapse rate among tokens that passed the filter (the false-positive rate).
     const pw = withLiq.filter(passes);
     const pc = pw.filter((t) => oc(t, h).liquidityUsd < t.dexscreener.liquidityUsd * 0.2);
