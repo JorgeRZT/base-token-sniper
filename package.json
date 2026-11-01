@@ -1,0 +1,15 @@
+{
+  "name": "token-sniper-base",
+  "version": "1.0.0",
+  "description": "Detects freshly deployed tokens on Uniswap V2/V3/V4 on Base, scores their risk and alerts via Telegram.",
+  "private": true,
+  "scripts": {
+    "monitor": "node scripts/monitor.js",
+    "latest:v3": "node scripts/latest-v3.js",
+    "telegram:test": "node scripts/telegram-test.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0"
+  }
+}
