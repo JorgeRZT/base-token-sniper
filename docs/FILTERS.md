@@ -8,6 +8,8 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 |---|---|
 | Impersonates a well-known token (same symbol/name as cbBTC, USDC, WETH, DAI, AERO, VIRTUAL... with a different address) or uses a generic name such as ETH/BTC/USD/LUSD | `lib/impersonation.js` |
 | All liquidity was removed after being added (rug pull) | `lib/lp.js` |
+| Serial deployer: 5+ other tokens from the same creator in the last 6h | launch history |
+| V2 pair with 50%+ of the LP in a regular wallet (12/12 such pairs removed liquidity within 1h in the first 3h sample) | `lib/lp.js` |
 | Sell simulation says it is a honeypot | honeypot.is |
 | Buy or sell tax above `MAX_TAX_PCT` (default 25%) | honeypot.is |
 | Known liquidity below `MIN_LIQUIDITY_USD` (default $1,000) | DexScreener |
@@ -16,7 +18,7 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 
 | Signal | Points |
 |---|---|
-| Uses a brand name (anthropic, openai, spacex, tesla...) | -10 |
+| Uses a brand name (anthropic, openai, spacex, tesla...) | -30 |
 | Creator wallet launched 2-4 other tokens in the last 48h / 5 or more | -15 / -30 |
 | Same symbol already launched in the last 48h (clone) | -15 |
 | Liquidity unknown (not indexed after `DEX_WAIT_MIN`) | -10 |
