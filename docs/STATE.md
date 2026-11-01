@@ -10,6 +10,9 @@ A "Base token sniper" **detection** bot: find freshly deployed tokens on Uniswap
 - Filters (docs/FILTERS.md): impersonation, clones (creator/symbol, 48h), liquidity, honeypot.is, bytecode flags, proxy, owner, V4 hooks, holder concentration, LP ownership (burned/contract/wallet), liquidity-removed = rug pull (hard reject).
 - The earlier smart contract (`RecentPairsReader`) was **removed** from the project (the bot does not need it). It remains deployed on Base at `0x7aDE98D9aA5A797a9cE1198607d50b1471cb4d82`; harmless. The user's `.env` may still contain an unused `PRIVATE_KEY` that they were advised to delete.
 
+## Repository
+Published at https://github.com/JorgeRZT/base-token-sniper (public, branch `main`, MIT, topics and issue labels configured). `.env` and `data/` are git-ignored; never commit secrets.
+
 ## Not done / pending
 - **Telegram is not configured yet** (the user will set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`); sending to Telegram has never been tested end to end.
 - The user is about to run the bot ~24 hours via cron and will share `data/new-tokens.jsonl` (and `data/outcomes.jsonl`) for review.
