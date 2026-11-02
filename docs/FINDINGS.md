@@ -94,6 +94,15 @@ Average value of the $0.10 positions: 0.23x if sold at once, 0.12x at +27 min. G
 ## Forward test in progress
 (Obsolete after the correction: family sell alerts are disabled because the families are `tradable: false`.) From 2026-11-02 ~08:00Z to ~10:00Z every family alert was followed by a sell alert at the family's hold time and `data/sell-alerts.jsonl` stores the multiple obtained. Compare it with the expectations in section 4 (B2: peak 7.5x / 5.7x at 1h) to see whether the family rule holds out of sample.
 
+## 10. Analysis at ~27 h (2026-11-02 15:26Z, 1,753 tokens, 545 alerted)
+- Volume: ~1,565 tokens/day; V4 82%, V2 14%, V3 3%. Serial creators: 776 tokens from only 40 creators (44%).
+- V2: 232 of 253 rejected (LP in wallet); the 19 that passed all collapsed (liquidity <20%) by 1h. V2 is a rug factory; the rule stands.
+- Alerted tokens before the sell simulation (<10:00Z, 469): price at 1h/6h median 1.00x; ~12% >=2x at 1h; 3% <0.5x. These multiples are DexScreener last-trade prices (see correction at the top).
+- After the sell simulation (>=10:00Z): V4 tokens: 76 sim OK, 98 rejected as unsellable, 26 not simulable. Alerts dropped from ~535/day to ~340/day. Of the 38 with a 1h outcome only 2 reached >=2x (5%), 6h data not yet available.
+- Reaction time (107 alerted with path): median 1.00x for any entry delay; mean falls from 2.36x (entry at alert) to 1.25x (+5 min) to 1.03x (+30 min). The mean at the alert comes from a few outliers (the unsellable family pumps).
+- 24h checkpoints (only for tokens detected 11-01 12:33-15:18Z, 66 alerted with price): median 1.09x, 16 >=2x, 12 <0.5x. All 16 winners are isolated V4 (12 no-hook, 4 hook), none from a family: GIGGLE 10.4x, P2P 13.9x, OFFR 6.7x, ZEC 6.6x, and 12 tokens at 2.4-2.8x with a nearly identical liquidity of ~$9.1-9.2k and 60-77k volume/24h, so they look like one repeated launch pattern with sustained organic volume. Sellability is UNKNOWN (no sell simulation existed then) and the 12 look like one family: worth backtesting with `scripts/trade-backtest.js` before believing them.
+- Families B2/D5 (30 alerted): 1h median 1.33x, 6h median 4.66x on paper, all unsellable per section 9.
+
 ## How to reproduce
 - `node scripts/analyze.js [--serial-min N] [--since ISO_DATE]`: all tokens / serial / non-serial / per version, 1h-6h-24h outcomes, peaks, false positives, reaction time. Use `--since 2026-11-01T17:45:00Z` for clean peak data and `--since 2026-11-01T15:45:00Z` for the filter after the first change.
 - Per-token joins used here: `data/new-tokens.jsonl` (`alerted`, `verdict`, `dexscreener`, `creator`, `family`) with `data/outcomes.jsonl` (`checkpointHours`, `priceUsd`, `baselinePriceUsd`, `peakPriceUsd`, `peakPriceAfterMin`, `minPriceUsd`, `path`) and a live DexScreener batch query for "now" prices. These ad-hoc joins were temporary scripts; the main parts live in `scripts/analyze.js`.
