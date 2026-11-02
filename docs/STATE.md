@@ -1,6 +1,6 @@
 # Project state (read this first in a new session)
 
-_Last updated: 2026-11-02 (late morning). **A major correction is at the top of `docs/FINDINGS.md`: the family "pumps" are unsellable honeypot pools.** Read `docs/FINDINGS.md` right after this file: it holds the data and conclusions of every analysis done so far._
+_Last updated: 2026-11-02 (15:30Z, ~27 h of data analysed, see FINDINGS section 10). **A major correction is at the top of `docs/FINDINGS.md`: the family "pumps" are unsellable honeypot pools.** Read `docs/FINDINGS.md` right after this file: it holds the data and conclusions of every analysis done so far._
 
 ## Goal
 A "Base token sniper" **detection** bot: find freshly deployed tokens on Uniswap V2/V3/V4 on Base, score risk, alert on Telegram. Buying is out of scope until the user asks. The user wants flexible filters (accept some risk: many tokens pump within minutes or hours).
@@ -31,7 +31,7 @@ Requested by the user on 2026-11-02 (buy $0.10 with a dedicated wallet, only kno
 - 2026-11-02 ~07:30Z: family block in alerts (`lib/families.js`, `lib/message.js`), `family` field in `new-tokens.jsonl`, `TELEGRAM_CHAT_ID` accepted without `@`.
 
 ## Pending (not done)
-1. **24 h analysis** (checkpoints start arriving ~12:30Z on 2026-11-02): run `node scripts/analyze.js`, update `docs/FINDINGS.md`, recalibrate `lib/families.js`, re-check the V3 rule and the V4 penalty.
+1. **24 h analysis**: first pass done at ~27 h (FINDINGS section 10; only tokens detected 11-01 12:33-15:18Z have 24h data). Re-run `node scripts/analyze.js` once more 24 h checkpoints exist for post-10:00Z tokens (6h/24h of sell-simulated alerts), then recalibrate `lib/families.js`, re-check the V3 rule and the V4 penalty. **Next step proposed:** backtest (`scripts/trade-backtest.js`) the 12 isolated V4 tokens of 11-01 13:20-15:20Z with liquidity ~$9.1k and 60-77k volume/24h (2.4-2.8x at 24h) plus the 24h winners (P2P, GIGGLE, OFFR, ZEC), selling at +5/+15/+30/+60 min, to see if any sellable pattern exists.
 2. ~~V4 sell simulation~~ **done** (2026-11-02 ~10:00Z). Watch how many V4 tokens are not simulable (-10 fallback) and re-run the analysis: all multiples before this date are DexScreener prices of pools that may not be sellable.
 3. **Change how alerts are delivered**: hourly digest of the best candidates plus an immediate alert only for validated patterns (families), instead of ~450-600 alerts/day. Possible option: `TELEGRAM_ONLY_FAMILIES`.
 4. **Policy for tokens without indexed liquidity** (48 of 288 alerts since 15:45Z had no price): leave them out of alerts or put them in a separate category.
