@@ -8,6 +8,7 @@ A "Base token sniper" **detection** bot: find freshly deployed tokens on Uniswap
 ## What exists and works (tested against Base mainnet via the user's Infura key)
 - `scripts/monitor.js`: one pass, run by cron every 60 s. Detects pools (V2/V3/V4), freshness check, DexScreener enrichment, risk scoring, Telegram alerts, 1h/6h/24h follow-up, peak/trough tracking and a price path (+2/+5/+10/+15/+30 min) for every evaluated token.
 - Filters (docs/FILTERS.md): impersonation, clones, serial deployers (reject 5+ in 6 h), liquidity, honeypot.is, bytecode flags, proxy, owner, V4 hooks, holder concentration, LP ownership (V2/V3 with >= 50% in a wallet = reject; V4 only -5), liquidity removed = rug (reject).
+- **Telegram switch**: `TELEGRAM_ENABLED=true|false` in `.env` (default true) turns the alerts on/off; while off nothing is queued.
 - **Telegram works** (verified 2026-11-02 with `node scripts/alert-preview.js --send`). Alerts show the token's **family** (`lib/families.js`) or "isolated token"; B2 and D5 are marked `tradable: false` (warning instead of a hold time/multiple, no sell alerts). Each alert record in `new-tokens.jsonl` stores `family`.
 - `scripts/analyze.js` (analysis of the jsonl), `scripts/alert-preview.js` (sample alerts), `scripts/telegram-test.js`.
 - The earlier smart contract (`RecentPairsReader`) was **removed** from the project. It remains deployed on Base at `0x7aDE98D9aA5A797a9cE1198607d50b1471cb4d82`; harmless. The user's `.env` may still contain an unused `PRIVATE_KEY` that they were advised to delete.

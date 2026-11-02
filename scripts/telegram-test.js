@@ -18,6 +18,6 @@ const { sendTelegram } = require("../lib/telegram");
     for (const [id, name] of chats) console.log(`  ${id}  ${name}`);
     return;
   }
-  const ok = await sendTelegram("✅ <b>Token sniper</b>: Telegram alerts are working.");
+  const ok = await sendTelegram("✅ <b>Token sniper</b>: Telegram alerts are working.", { force: true });
   console.log(ok ? "Test message sent." : "Failed to send (see error above).");
 })().catch((e) => { console.error(e.message); process.exit(1); });

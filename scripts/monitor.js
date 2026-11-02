@@ -277,6 +277,7 @@ async function main() {
   }
 
   // 4. deliver Telegram alerts (failed ones stay queued and are retried on the next run)
+  if (!telegramEnabled()) state.unsent = []; // switched off (TELEGRAM_ENABLED=false) or not configured: nothing stale is sent later
   if (state.unsent.length) {
     if (telegramEnabled()) {
       const remaining = [];

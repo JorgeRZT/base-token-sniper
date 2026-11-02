@@ -5,7 +5,7 @@ require("dotenv").config();
 const fs = require("fs");
 const { buildMessage, buildSellMessage } = require("../lib/message");
 const { classifyFamily, FAMILIES } = require("../lib/families");
-const { sendTelegram, enabled } = require("../lib/telegram");
+const { sendTelegram, credentials: enabled } = require("../lib/telegram");
 
 const recs = fs.readFileSync("data/new-tokens.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l));
 const alerted = recs.filter((r) => r.alerted);
@@ -30,7 +30,7 @@ if (!solo || !fam) throw new Error("Need at least one alerted isolated token and
     console.log(`\n--- ${label}: ${rec.token.symbol} ${rec.token.address}\n${msg.replace(/<[^>]+>/g, "")}`);
     if (process.argv.includes("--send")) {
       if (!enabled()) { console.log("Telegram is not configured."); continue; }
-      console.log((await sendTelegram(msg)) ? "-> sent" : "-> FAILED to send");
+      console.log((await sendTelegram(msg, { force: true })) ? "-> sent" : "-> FAILED to send");
       await new Promise((r) => setTimeout(r, 1200));
     }
   }

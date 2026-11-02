@@ -55,7 +55,7 @@ npm run monitor             # one test pass
 4. Run `npm run telegram:test` again: you should receive a test message.
 5. `npm run alert:preview -- --send` sends three sample alerts (an isolated token, a family token and a family sell alert) built from real past records.
 
-Without Telegram configured the monitor still works and writes everything to `data/`.
+Without Telegram configured the monitor still works and writes everything to `data/`. To pause the alerts without touching the credentials set `TELEGRAM_ENABLED=false` in `.env` (back to `true` to resume; the change applies on the next minute's run, nothing queued while off is sent later). `npm run telegram:test` and `npm run alert:preview -- --send` ignore the switch.
 
 ## Running it every minute on macOS (cron)
 
