@@ -9,7 +9,8 @@ cron (every 60 s) -> scripts/monitor.js
    |-- DexScreener /token-pairs/v1/base/{token}                                      -> liquidity, price, volume
    |-- honeypot.is /v2/IsHoneypot                                                    -> sell simulation, taxes (V2/V3 only)
    |-- eth_getLogs on the token / pool / PositionManager                             -> holders, LP ownership, rug detection
-   '-- Telegram Bot API                                                              -> alerts
+   |-- lib/families.js : token family (address prefix / LP owner) -> hold time, expected multiple
+   '-- Telegram Bot API (lib/message.js builds the text)                              -> alerts
 state: data/state.json (also running peak/trough per watched token)   output: data/new-tokens.jsonl, data/outcomes.jsonl
 ```
 
@@ -20,6 +21,10 @@ state: data/state.json (also running peak/trough per watched token)   output: da
 3. **Score-based filtering.** Only clear dangers are hard rejects; everything else subtracts points, because early tokens that later pump often have low liquidity, an owner or a hook. See FILTERS.md.
 4. **Untrusted data.** Token names and symbols are attacker-controlled: they are escaped before being sent to Telegram, and token calls use low-level tolerant reads.
 5. **No keys.** The bot only reads the chain; it needs no private key.
+
+## Families
+
+`lib/families.js` lists groups of tokens that launch and behave alike (today: addresses starting with `0xb2000000…` and pools whose LP is owned by `0xd54345…`). Each family carries hard-coded historical statistics (hold time = median minutes to the price peak, expected multiple, history). They come from the first ~19 h of data and are not validated forward; see [FINDINGS.md](FINDINGS.md). `lib/message.js` adds the family block to the Telegram alert and `monitor.js` stores the family id in each `new-tokens.jsonl` record.
 
 ## Limitations
 

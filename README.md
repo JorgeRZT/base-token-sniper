@@ -26,7 +26,7 @@ Each run of `scripts/monitor.js`:
 2. Takes the non-base side of each pool (base = WETH, USDC, native ETH) and skips tokens already in the registry (`data/state.json`).
 3. A token is **fresh** if it had no contract code `MAX_TOKEN_AGE_MIN` minutes (default 60) before its pool was created. Older tokens that just got a new pool are registered but not reported.
 4. Fresh tokens wait up to `DEX_WAIT_MIN` minutes for DexScreener to index the pool (liquidity, price, volume), then go through the **risk filters** ([docs/FILTERS.md](docs/FILTERS.md)): impersonation, clones, liquidity, honeypot simulation, contract flags, holder concentration, LP ownership and rug-pull (liquidity removal) detection.
-5. Every evaluated token is appended to `data/new-tokens.jsonl` with its score and reasons. Tokens that pass are sent to Telegram (failed deliveries are retried on the next run).
+5. Every evaluated token is appended to `data/new-tokens.jsonl` with its score, reasons and `family`. Tokens that pass are sent to Telegram (failed deliveries are retried on the next run). If the token belongs to a known **family** (`lib/families.js`: groups of tokens that launch and behave alike) the alert shows the family, how long to hold and the multiple it has historically reached; otherwise it says it is an isolated token.
 6. Follow-up: each evaluated token is checked again at **1h, 6h and 24h** (DexScreener liquidity/price) and appended to `data/outcomes.jsonl`. In between, every run batch-samples the price/liquidity of tokens evaluated in the last 24 h to keep their running peak and trough, which are stored in each outcome record. This is the data for tuning the filters (`node scripts/analyze.js` summarises it).
 
 Why on-chain events and not DexScreener as the source: DexScreener has no "new pools" endpoint and only lists pools after indexing them (a few minutes), so it is used only for enrichment.
@@ -53,6 +53,7 @@ npm run monitor             # one test pass
 2. For a channel: add the bot as **admin**. For a private chat: send the bot any message.
 3. Run `npm run telegram:test` without `TELEGRAM_CHAT_ID`: it lists the chats the bot can see. Put the id (or `@channelname`) in `TELEGRAM_CHAT_ID`.
 4. Run `npm run telegram:test` again: you should receive a test message.
+5. `npm run alert:preview -- --send` sends two sample alerts (an isolated token and a family token) built from real past records.
 
 Without Telegram configured the monitor still works and writes everything to `data/`.
 
@@ -80,7 +81,7 @@ macOS caveats:
 | File | Content |
 |---|---|
 | `new-tokens.jsonl` | One JSON line per evaluated token: token, pool, creator, DexScreener data, score, reasons, holders, LP analysis, `alerted` |
-| `outcomes.jsonl` | Follow-up at 1h / 6h / 24h: liquidity and price, with the score the token got, plus baseline, peak and trough price/liquidity since evaluation |
+| `outcomes.jsonl` | Follow-up at 1h / 6h / 24h: liquidity and price, with the score the token got, plus baseline, peak and trough price/liquidity since evaluation and the price path at +2/+5/+10/+15/+30 min (`path`) |
 | `state.json` | Registry, last block, pending queue, 48h launch history, Telegram retry queue |
 | `monitor.log` | Cron output |
 
@@ -93,12 +94,16 @@ See `.env.example`. Main variables: `INFURA_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TEL
 ## Other tools
 
 - `npm run latest:v3 -- 20 20000`: prints the latest V3 pools by scanning `PoolCreated` events (manual, standalone).
+- `npm run analyze -- [--serial-min N] [--since ISO_DATE]`: analysis of `data/new-tokens.jsonl` + `data/outcomes.jsonl` (serial vs other creators, per version, 1h/6h/24h outcomes, peaks, reaction time). Conclusions so far: [docs/FINDINGS.md](docs/FINDINGS.md).
+- `npm run alert:preview [-- --send]`: shows (and optionally sends) a sample alert for an isolated token and a family token.
 
 ## Project layout
 
 ```
 scripts/monitor.js           the bot (one pass, run by cron)
 scripts/telegram-test.js     Telegram test / chat-id finder
+scripts/analyze.js           offline analysis of the jsonl outputs
+scripts/alert-preview.js     sample alerts (isolated token / family token)
 scripts/latest-v3.js         manual V3 pool listing
 lib/config.js                addresses, provider, helpers
 lib/filters.js               scoring and rejection rules
@@ -106,7 +111,9 @@ lib/impersonation.js         known-token / brand impersonation
 lib/holders.js               holder distribution from Transfer events
 lib/lp.js                    LP ownership (burned / contract / wallet) for V2, V3, V4
 lib/telegram.js              Telegram delivery
-docs/                        ARCHITECTURE.md, FILTERS.md, STATE.md (project status)
+lib/families.js              known token families (hold time, expected multiple)
+lib/message.js               alert text
+docs/                        ARCHITECTURE.md, FILTERS.md, STATE.md (project status), FINDINGS.md (analysis results)
 ```
 
 Addresses on Base: V2 factory `0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6`, V3 factory `0x33128a8fC17869897dcE68Ed026d694621f6FDfD`, V4 PoolManager `0x498581fF718922c3f8e6A244956aF099B2652b2b`.

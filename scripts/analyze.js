@@ -75,3 +75,19 @@ for (const [c, n] of Object.entries(perCreator).filter((e) => e[1] >= SERIAL_MIN
   const ts = T.filter((t) => t.creator === c);
   console.log(c.slice(0, 10), n, JSON.stringify(cnt(ts, (t) => t.uniswap)), "symbols:", [...new Set(ts.map((t) => t.token.symbol))].slice(0, 4).join("|"), "passed:", ts.filter(passes).length);
 }
+
+// Reaction-time sensitivity: if you bought at +N minutes after the alert instead of at the alert, what is the price at the 1h checkpoint relative to that entry?
+// Only alerted tokens (passed the filter) with price-path data (recorded after the path tracking was added).
+const withPath = T.filter((t) => passes(t) && oc(t, 1)?.path);
+if (withPath.length) {
+  console.log(`\n===== Reaction time (alerted tokens with price path: ${withPath.length})`);
+  for (const off of [0, 2, 5, 10, 15, 30]) {
+    const rs = withPath.map((t) => {
+      const o = oc(t, 1), entry = off === 0 ? o.baselinePriceUsd : o.path[off]?.[1], end = +o.priceUsd;
+      return entry > 0 && end > 0 ? end / entry : null;
+    }).filter((x) => x != null);
+    if (!rs.length) continue;
+    const mean = rs.reduce((a, b) => a + b, 0) / rs.length;
+    console.log(`  entry at +${String(off).padStart(2)} min: n=${rs.length}, price at 1h / entry: median ${med(rs).toFixed(2)}x, mean ${mean.toFixed(2)}x, >=1.5x ${rs.filter((x) => x >= 1.5).length}, <0.8x ${rs.filter((x) => x < 0.8).length}`);
+  }
+}

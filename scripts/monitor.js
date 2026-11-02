@@ -14,7 +14,9 @@ const { Interface, id } = require("ethers");
 const { ADDRESSES, getProvider, tokenInfo, pickNewToken } = require("../lib/config");
 const { evaluate, cfg } = require("../lib/filters");
 const { norm } = require("../lib/impersonation");
-const { enabled: telegramEnabled, esc, sendTelegram } = require("../lib/telegram");
+const { enabled: telegramEnabled, sendTelegram } = require("../lib/telegram");
+const { classifyFamily } = require("../lib/families");
+const { buildMessage } = require("../lib/message");
 
 const DATA = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA, "state.json");
@@ -25,6 +27,8 @@ const CHECKPOINT_HOURS = [1, 6, 24]; // follow-up checks on every evaluated toke
 const MAX_CHECKS_PER_RUN = 40;
 const PEAK_BATCH = 30; // DexScreener batch endpoint accepts up to 30 addresses
 const PEAK_MAX_BATCHES_PER_RUN = 10; // peak/trough sampling budget per run (rotates through the watch list)
+const PATH_MINUTES = [2, 5, 10, 15, 30]; // price path after the alert: price/liquidity at these ages (recorded at the first sample after each)
+const PATH_MAX_LATE_MIN = 3; // a path point is only recorded if the sample is at most this many minutes late
 const PEAK_WINDOW_HOURS = 24; // keep sampling price/liquidity for this long after evaluation
 
 const MAX_TOKEN_AGE_MIN = Number(process.env.MAX_TOKEN_AGE_MIN || 60); // "just deployed" window
@@ -107,6 +111,13 @@ function track(w, d) {
     if (!(price <= (w.pMax || 0))) { w.pMax = price; w.pMaxAt = Date.now(); }
     if (!(price >= (w.pMin ?? Infinity))) w.pMin = price;
   }
+  if (price > 0) {
+    const ageMin = (Date.now() - w.t0) / 60000;
+    w.path ||= {};
+    for (const off of PATH_MINUTES) {
+      if (w.path[off] === undefined && ageMin >= off && ageMin <= off + PATH_MAX_LATE_MIN) w.path[off] = [Math.round(ageMin * 10) / 10, price, liq > 0 ? liq : null]; // [actual age in min, price, liquidity]
+    }
+  }
   if (liq > 0) {
     if (!(w.l0 > 0)) w.l0 = liq;
     if (!(liq <= (w.lMax || 0))) w.lMax = liq;
@@ -114,29 +125,6 @@ function track(w, d) {
   }
 }
 
-function buildMessage(r) {
-  const t = r.token, v = r.verdict, d = r.dexscreener;
-  const lines = [
-    `<b>${v.level}</b> · Uniswap ${r.uniswap.toUpperCase()} · score ${v.score}/100`,
-    `<b>${esc(t.name)}</b> (${esc(t.symbol)})`,
-    `<code>${t.address}</code>`,
-  ];
-  if (d) lines.push(`Liquidity: $${Math.round(d.liquidityUsd || 0).toLocaleString("en-US")} · Price: $${d.priceUsd ?? "?"} · Vol 24h: $${Math.round(d.volume24h || 0).toLocaleString("en-US")}`);
-  else lines.push("Liquidity: not indexed by DexScreener yet");
-  const hp = v.honeypot;
-  if (hp) lines.push(`Sim: buy tax ${hp.buyTax}% / sell tax ${hp.sellTax}%`);
-  if (v.holders) lines.push(`Holders: ${v.holders.holders} · top wallet ${v.holders.topHolderPct}% · creator ${v.holders.creatorPct}%`);
-  if (v.lp) lines.push(`LP: ${v.lp.lockedPct}% burned/locked · ${v.lp.contractPct}% contract · ${v.lp.walletPct}% wallet`);
-  for (const n of v.notes || []) lines.push(`✅ ${esc(n)}`);
-  if (v.reasons.length) lines.push("", "<b>Warnings</b>", ...v.reasons.map((x) => `• ${esc(x)}`));
-  const links = [
-    `<a href="https://dexscreener.com/base/${d ? r.pool : t.address}">DexScreener</a>`,
-    `<a href="https://basescan.org/token/${t.address}">Basescan</a>`,
-    `<a href="https://honeypot.is/base?address=${t.address}">Honeypot.is</a>`,
-  ];
-  lines.push("", links.join(" · "));
-  return lines.join("\n");
-}
 
 async function main() {
   const provider = getProvider();
@@ -211,7 +199,9 @@ async function main() {
       verdict: { level: verdict.level, score: verdict.score, reject: verdict.reject, reasons: verdict.reasons, notes: verdict.notes, honeypot: verdict.honeypot, contract: verdict.contract, holders: verdict.holders, lp: verdict.lp },
       creator: p.creator,
       alerted: verdict.passes,
+      family: null,
     };
+    record.family = classifyFamily(record)?.id ?? null; // known token family (see lib/families.js)
     fs.appendFileSync(OUT_FILE, JSON.stringify(record) + "\n");
     console.log(`[${verdict.passes ? "ALERT" : "SKIP"} ${p.version.toUpperCase()}] ${info.name} (${info.symbol}) ${p.token} ${verdict.level} score=${verdict.score}` +
       (verdict.reject ? ` reject="${verdict.reject}"` : ""));
@@ -226,7 +216,10 @@ async function main() {
   // 3a. peak/trough sampling: batch-query the tokens evaluated in the last PEAK_WINDOW_HOURS, least recently sampled first
   const sampling = Object.values(state.watch)
     .filter((w) => Date.now() - w.t0 < PEAK_WINDOW_HOURS * 3600e3)
-    .sort((a, b) => (a.lastSample || 0) - (b.lastSample || 0))
+    .sort((a, b) => {
+      const ya = Date.now() - a.t0 < 35 * 60e3, yb = Date.now() - b.t0 < 35 * 60e3; // tokens still inside the price-path window go first
+      return ya !== yb ? (ya ? -1 : 1) : (a.lastSample || 0) - (b.lastSample || 0);
+    })
     .slice(0, PEAK_BATCH * PEAK_MAX_BATCHES_PER_RUN);
   for (let i = 0; i < sampling.length; i += PEAK_BATCH) {
     const chunk = sampling.slice(i, i + PEAK_BATCH);
@@ -249,6 +242,7 @@ async function main() {
         baselinePriceUsd: w.p0 ?? null, baselineLiquidityUsd: w.l0 ?? null,
         peakPriceUsd: w.pMax ?? null, peakPriceAfterMin: w.pMaxAt ? Math.round((w.pMaxAt - w.t0) / 60000) : null, minPriceUsd: w.pMin ?? null,
         peakLiquidityUsd: w.lMax ?? null, minLiquidityUsd: w.lMin ?? null,
+        path: w.path ?? null, // {minutes after evaluation: [actual age, price, liquidity]}
       }) + "\n");
       w.done.push(h);
     }
@@ -263,7 +257,9 @@ async function main() {
         if (remaining.length || !(await sendTelegram(msg))) remaining.push(msg);
         else await new Promise((r) => setTimeout(r, 1100)); // Telegram: ~1 msg/s per chat
       }
+      const sent = state.unsent.length - remaining.length;
       state.unsent = remaining.slice(-MAX_UNSENT);
+      console.log(`Telegram: sent ${sent}, queued for retry ${state.unsent.length}`);
     }
   }
   const found = reported;

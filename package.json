@@ -6,7 +6,9 @@
   "scripts": {
     "monitor": "node scripts/monitor.js",
     "latest:v3": "node scripts/latest-v3.js",
-    "telegram:test": "node scripts/telegram-test.js"
+    "telegram:test": "node scripts/telegram-test.js",
+    "analyze": "node scripts/analyze.js",
+    "alert:preview": "node scripts/alert-preview.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

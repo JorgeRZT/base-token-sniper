@@ -9,7 +9,7 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 | Impersonates a well-known token (same symbol/name as cbBTC, USDC, WETH, DAI, AERO, VIRTUAL... with a different address) or uses a generic name such as ETH/BTC/USD/LUSD | `lib/impersonation.js` |
 | All liquidity was removed after being added (rug pull) | `lib/lp.js` |
 | Serial deployer: 5+ other tokens from the same creator in the last 6h | launch history |
-| V2 pair with 50%+ of the LP in a regular wallet (12/12 such pairs removed liquidity within 1h in the first 3h sample) | `lib/lp.js` |
+| V2 or V3 pool with 50%+ of the LP in a regular wallet (V2: 155 of 160 collapsed within 1h; V3: WBUT, LZRD, LEAR went to 0 liquidity, 3 of 11 with data) | `lib/lp.js` |
 | Sell simulation says it is a honeypot | honeypot.is |
 | Buy or sell tax above `MAX_TAX_PCT` (default 25%) | honeypot.is |
 | Known liquidity below `MIN_LIQUIDITY_USD` (default $1,000) | DexScreener |
@@ -32,7 +32,7 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 | One wallet (top holder or pool creator) holds 20-49% / 50% or more of the supply | -10 / -20 |
 | Fewer than 5 holders | -5 |
 | Holder distribution unavailable | -5 |
-| 50%+ of the LP is in a regular wallet (can be pulled) | -20 |
+| 50%+ of the LP is in a regular wallet, V4 (only 2 of 568 collapsed in the first 18h) | -5 |
 | 50%+ of the LP is in a contract (may be a locker, verify) | -5 |
 | LP split between several kinds of owner | -10 |
 | LP ownership unreadable | -5 |
@@ -48,6 +48,8 @@ If 80% or more of the LP is burned or in an address from `LOCKER_ADDRESSES`, the
 Levels: 🟢 ≥ 70, 🟡 ≥ `MIN_SCORE`, 🟠 below it (not alerted), 🔴 rejected.
 
 ## Measuring the filters
+
+Results of the analyses done so far (which rules were validated, how the score relates to pumps, token families) are in [FINDINGS.md](FINDINGS.md).
 
 `data/outcomes.jsonl` records liquidity and price at 1h / 6h / 24h for every evaluated token together with the score it received, so the thresholds can be tuned against what really happened. Each record also carries the baseline price/liquidity and the peak and trough seen since evaluation (sampled about every 1-3 minutes), so you can tell what could have been captured, not only where the price ended up. Run `node scripts/analyze.js` for a summary (serial vs non-serial creators, per version).
 

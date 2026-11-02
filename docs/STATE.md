@@ -1,51 +1,44 @@
 # Project state (read this first in a new session)
 
-_Last updated: 2026-11-01 (evening)._
+_Last updated: 2026-11-02 (morning). Read `docs/FINDINGS.md` right after this file: it holds the data and conclusions of every analysis done so far._
 
 ## Goal
-A "Base token sniper" **detection** bot: find freshly deployed tokens on Uniswap V2/V3/V4 on Base, score risk, alert on Telegram. Buying is out of scope for now. The user wants flexible filters (accept some risk: many tokens pump within hours or days).
+A "Base token sniper" **detection** bot: find freshly deployed tokens on Uniswap V2/V3/V4 on Base, score risk, alert on Telegram. Buying is out of scope until the user asks. The user wants flexible filters (accept some risk: many tokens pump within minutes or hours).
 
 ## What exists and works (tested against Base mainnet via the user's Infura key)
-- `scripts/monitor.js`: one pass, designed for cron every 60 s. Detects pools (V2/V3/V4), freshness check, DexScreener enrichment, risk scoring, Telegram alerts, 1h/6h/24h follow-up.
-- Filters (docs/FILTERS.md): impersonation, clones (creator/symbol, 48h), liquidity, honeypot.is, bytecode flags, proxy, owner, V4 hooks, holder concentration, LP ownership (burned/contract/wallet), liquidity-removed = rug pull (hard reject).
-- The earlier smart contract (`RecentPairsReader`) was **removed** from the project (the bot does not need it). It remains deployed on Base at `0x7aDE98D9aA5A797a9cE1198607d50b1471cb4d82`; harmless. The user's `.env` may still contain an unused `PRIVATE_KEY` that they were advised to delete.
+- `scripts/monitor.js`: one pass, run by cron every 60 s. Detects pools (V2/V3/V4), freshness check, DexScreener enrichment, risk scoring, Telegram alerts, 1h/6h/24h follow-up, peak/trough tracking and a price path (+2/+5/+10/+15/+30 min) for every evaluated token.
+- Filters (docs/FILTERS.md): impersonation, clones, serial deployers (reject 5+ in 6 h), liquidity, honeypot.is, bytecode flags, proxy, owner, V4 hooks, holder concentration, LP ownership (V2/V3 with >= 50% in a wallet = reject; V4 only -5), liquidity removed = rug (reject).
+- **Telegram works** (verified 2026-11-02 with `node scripts/alert-preview.js --send`). Alerts now show the token's **family** (`lib/families.js`): hold time and expected multiple, or "isolated token". Each alert record in `new-tokens.jsonl` stores `family`.
+- `scripts/analyze.js` (analysis of the jsonl), `scripts/alert-preview.js` (sample alerts), `scripts/telegram-test.js`.
+- The earlier smart contract (`RecentPairsReader`) was **removed** from the project. It remains deployed on Base at `0x7aDE98D9aA5A797a9cE1198607d50b1471cb4d82`; harmless. The user's `.env` may still contain an unused `PRIVATE_KEY` that they were advised to delete.
 
 ## Repository
-Published at https://github.com/JorgeRZT/base-token-sniper (public, branch `main`, MIT, topics and issue labels configured). `.env` and `data/` are git-ignored; never commit secrets.
+https://github.com/JorgeRZT/base-token-sniper (public, branch `main`, MIT). `.env` and `data/` are git-ignored; never commit secrets.
 
-## Not done / pending
-- **Telegram is not configured yet** (the user will set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`); sending to Telegram has never been tested end to end.
-- The user is running the bot via cron every minute (24 h run started 2026-11-01 ~12:30Z) and will share `data/new-tokens.jsonl` (and `data/outcomes.jsonl`) for review.
+## Running now
+Cron runs the monitor every minute since 2026-11-01 ~12:30Z (24 h run). **With Telegram enabled, every alerted token is now sent: ~450-600 alerts/day**, of which only ~10 later peaked >= 2x. Digest/selection of alerts is still pending (see below).
 
-## First analysis (3 h of data, 273 tokens) and filter changes
-- All 12 V2 tokens that passed had 100% of the LP in a wallet and removed liquidity within 1h; V4 passers collapsed 1/41. Serial deployers (9 creators, 55% of tokens) are 100% V4, LP in a contract, and show no pump nor rug (zombie tokens); rugs and pumps come from non-serial creators.
-- Applied (`lib/filters.js`, after ~16:40 local on 2026-11-01): V2 with >=50% LP in a wallet = hard reject; 5+ other tokens from the same creator in 6h = hard reject; brand name penalty -10 -> -30. Data before/after this change is not directly comparable.
+## Filter / code changes timeline (data before and after is not directly comparable)
+- 2026-11-01 15:45Z: V2 with LP >= 50% in a wallet = reject; serial deployer (5+ other tokens from the same creator in 6 h) = reject; brand-name penalty -10 -> -30.
+- 2026-11-01 ~17:41Z: peak/trough tracking in `outcomes.jsonl` (`baseline*`, `peak*`, `min*`). Clean peak data only for tokens evaluated after 17:45Z.
+- 2026-11-02 ~07:15Z: V3 with LP >= 50% in a wallet = reject; V4 LP-in-wallet penalty -20 -> -5; price path (`path`) in outcomes.
+- 2026-11-02 ~07:30Z: family block in alerts (`lib/families.js`, `lib/message.js`), `family` field in `new-tokens.jsonl`, `TELEGRAM_CHAT_ID` accepted without `@`.
 
-## Second analysis (5.1 h, 449 tokens; filter change at 2026-11-01T15:45Z)
-- After the change: 0/12 passed-and-collapsed (before: 18/91, 17 of them V2). V2 now 11/11 rejected; 64 serial-deployer rejects. Passers dropped from ~925/day to ~726/day.
-- Serial creators grew to 16 (252 tokens): still 0 collapses, 0 pumps, 0 with 24h volume > $1,000 (zombies).
-- The score is inversely related to pumps for non-serial tokens (price >=2x at 1h): score <40 -> 14/16, 40-59 -> 20/63, 60+ -> 0/23 (9 of those 23 dumped, all V2). Small pools, price baseline taken at first DexScreener sighting, so treat as biased; next idea is to stop penalising V4 for hooks / missing sell simulation uniformly, or rank by liquidity growth instead.
+## Pending (not done)
+1. **24 h analysis** (checkpoints start arriving ~12:30Z on 2026-11-02): run `node scripts/analyze.js`, update `docs/FINDINGS.md`, recalibrate `lib/families.js`, re-check the V3 rule and the V4 penalty.
+2. **V4 sell simulation**: quote a minimal sell through the V4 Quoter (a revert = hook blocks selling or no usable liquidity) and replace the constant -10 "sell simulation not available for V4" (it is the same for every V4 token and inflates V2/V3 relative to V4). Prerequisite for any buy logic.
+3. **Change how alerts are delivered**: hourly digest of the best candidates plus an immediate alert only for validated patterns (families), instead of ~450-600 alerts/day. Possible option: `TELEGRAM_ONLY_FAMILIES`.
+4. **Policy for tokens without indexed liquidity** (48 of 288 alerts since 15:45Z had no price): leave them out of alerts or put them in a separate category.
+5. **Log more token features** (deployer/factory contract, known launchpad LP owner) to test whether the B2 and D5 patterns predict pumps or were a coincidence of the first 19 h; also log the time of the last trade to measure token "life".
+6. **Forward paper-trading test** of the family rule (price at +N min after each alert) before any buy logic.
+- Do not hard-code more rules for families before validating forward.
+- Other ideas: flag implausible DexScreener liquidity (a clone showed $30M), recognise locker contracts (`LOCKER_ADDRESSES`), delayed alerts to filter early rugs, WebSocket instead of polling, V3 manual-listing tool cleanup.
 
-## How to repeat the analysis (including serial deployers)
-Run `node scripts/analyze.js` from the project root (options: `--serial-min N`, default 5; `--since ISO_DATE`). It prints, for ALL tokens, SERIAL creators, NON-SERIAL creators and each Uniswap version: level/score distribution, pass and alert counts, reject reasons, LP owner kind, median liquidity, and per checkpoint (1h/6h/24h) the liquidity collapse rate, liquidity growth, price >=2x/>=5x, volume and the false-positive rate (passed but collapsed). It ends with a per-creator table of the serial deployers.
-- "Serial" = a creator with >= N launches **in the analysed dataset**, so it is computed from the data and does not depend on the live filter. Serial tokens are still evaluated and logged after the filter change, just rejected, so they stay in the comparison.
-- To get a clean before/after view of the 2026-11-01 filter change use `--since` with the first detection after the change (the first serial-deployer reject in `new-tokens.jsonl` marks it). Without it, the old and new filters are mixed.
-- Baseline from the first 3 h (pre-change; 273 tokens): serial = 152 tokens / 9 creators, 100% V4, LP in a contract, 0/30 liquidity collapses, 0 pumps >=2x, 36 of 42 found with 24h volume under $10 (zombie tokens). Non-serial = 125 tokens / 115 creators, 13/63 collapses, 20/72 pumps >=2x, 54 with volume over $1,000.
-- Caveats: tokens not indexed in DexScreener at detection have no baseline price (STEEM x7.6 and UPVEMBER x5.8 are serial and were left out of the pump count); the checkpoint fields `priceUsd`/`liquidityUsd` are point-in-time values.
-- **Peak tracking** (added 2026-11-01 ~17:40Z): every run batch-samples DexScreener for tokens evaluated in the last 24 h and keeps running extremes; each outcome record now also has `baselinePriceUsd`, `baselineLiquidityUsd`, `peakPriceUsd`, `peakPriceAfterMin`, `minPriceUsd`, `peakLiquidityUsd`, `minLiquidityUsd`. `analyze.js` prints a "with peak data" line when present. Tokens already being watched at that moment have their baseline set to the first price sampled then (not the detection price), and their peaks only cover the time after; use `--since 2026-11-01T17:45:00Z` for clean peak statistics.
-
-## Next steps (after the 24 h run)
-1. Run `node scripts/analyze.js` and review the output (and read the jsonl for details): how many tokens evaluated/passed per day (the estimate was ~300-450 passing per day at `MIN_SCORE=40`, from a single 30-min sample), the score distribution, the false-positive rate (passed but rugged: compare `outcomes.jsonl` at 1h/6h/24h) and tokens that pumped.
-2. Tune `MIN_SCORE`, penalties and thresholds with that data; consider fewer alerts (e.g. `MIN_SCORE=60`).
-3. Ideas discussed: penalty for tokens with a single holder or LP in a wallet, flag implausible DexScreener liquidity (a clone showed $30M), recognise common locker contracts (`LOCKER_ADDRESSES`), delayed alerts to filter early rugs (many rugs happen 8-30 min after launch), WebSocket instead of polling, V3 manual-listing tool cleanup.
-
-## Observations so far
-- Base V2 gets ~200-270 new pairs/day; across V2+V3+V4 about 1,700 pools/day were seen in a 30 min sample (V4 is more than half).
-- In a 30 min sample: 18 fresh tokens evaluated, 9 passed (score >= 40), 6 had already removed liquidity (rug pulls, mostly V4).
-- Many tokens are clones/impersonations (cbBTC, LUSD, SpaceX, Anthropic, "Federal Fund Dividend" series).
-- honeypot.is does not support V4 pools; gas on Base/Ethereum/Arbitrum is negligible (fractions of a cent), so the chain choice depends on opportunity and bot competition (Base was kept).
-- Infura public RPC rate limits eth_getLogs; the user's Infura key works for Base.
+## Observations about the platform
+- honeypot.is does not support V4 pools; gas on Base is a fraction of a cent, so the chain choice depends on opportunity and bot competition (Base was kept).
+- Infura public RPC rate limits `eth_getLogs`; the user's Infura key works for Base. DexScreener batch endpoint `tokens/v1/base/{a,b,...}` takes 30 addresses.
+- Base V2 gets ~200-270 new pairs/day; across V2+V3+V4 ~1,700-2,100 tokens/day, ~93% V4.
 
 ## Conventions
-- Everything (code, docs, comments) in **English**; conversation with the user in Spanish.
-- Never read or print the user's `.env` (it holds secrets). Do not add private keys or trading code without being asked.
+- Everything (code, docs, comments, Telegram message text) in **English**; conversation with the user in Spanish.
+- Never read or print the user's `.env` (it holds secrets, including the Telegram token). Do not add private keys or trading code without being asked.
