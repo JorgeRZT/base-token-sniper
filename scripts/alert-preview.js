@@ -16,10 +16,11 @@ if (!solo || !fam) throw new Error("Need at least one alerted isolated token and
 (async () => {
   // Sell alert sample: a real past B2 token, using its price at the 1h checkpoint as the "sell" price (simulated).
   const outs = fs.existsSync("data/outcomes.jsonl") ? fs.readFileSync("data/outcomes.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [];
-  const sellRec = alerted.filter((r) => classifyFamily(r)?.id === "B2" && r.token.symbol && r.token.symbol !== "?" && outs.some((o) => o.token.toLowerCase() === r.token.address.toLowerCase() && o.checkpointHours === 1 && o.peakPriceUsd > 0 && o.baselinePriceUsd > 0 && +o.priceUsd > o.baselinePriceUsd * 3)).slice(-1)[0];
+  const sellRec = FAMILIES.find((x) => x.id === "B2")?.tradable === false ? null : alerted.filter((r) => classifyFamily(r)?.id === "B2" && r.token.symbol && r.token.symbol !== "?" && outs.some((o) => o.token.toLowerCase() === r.token.address.toLowerCase() && o.checkpointHours === 1 && o.peakPriceUsd > 0 && o.baselinePriceUsd > 0 && +o.priceUsd > o.baselinePriceUsd * 3)).slice(-1)[0];
   const sellOut = sellRec && outs.find((o) => o.token.toLowerCase() === sellRec.token.address.toLowerCase() && o.checkpointHours === 1);
   const sellMsg = sellRec && (() => {
     const f = FAMILIES.find((x) => x.id === "B2");
+    if (f.tradable === false) return null; // no sell alerts for families whose pools cannot be sold
     const res = { ageMin: f.holdMin, alertPriceUsd: sellOut.baselinePriceUsd, priceUsd: +sellOut.priceUsd, multiple: +sellOut.priceUsd / sellOut.baselinePriceUsd, peakMultiple: sellOut.peakPriceUsd / sellOut.baselinePriceUsd, peakAfterMin: sellOut.peakPriceAfterMin, liquidityUsd: sellOut.liquidityUsd };
     return buildSellMessage({ w: { token: sellRec.token.address, name: sellRec.token.name, symbol: sellRec.token.symbol, pool: sellRec.pool }, fam: f, res });
   })();

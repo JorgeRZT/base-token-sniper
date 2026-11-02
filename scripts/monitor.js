@@ -237,7 +237,7 @@ async function main() {
   for (const [key, w] of Object.entries(state.watch)) {
     if (!w.alerted || !w.family || w.sold) continue;
     const fam = FAMILIES.find((f) => f.id === w.family);
-    if (!fam) continue;
+    if (!fam || fam.tradable === false) continue; // no sell alerts for families whose pools cannot be sold
     const ageMin = (Date.now() - w.t0) / 60000;
     if (ageMin < fam.holdMin) continue;
     const fresh = w.pLast > 0 && Date.now() - (w.pLastAt || 0) <= SELL_PRICE_MAX_AGE_MS;

@@ -1,5 +1,15 @@
 # Findings (most revealing data from the analyses so far)
 
+> ## CORRECTION (2026-11-02, ~10:00Z) - read this first
+> The "pumps" of families B2 (`0xb2000000…`) and D5 (LP owner `0xd54345…`), and of Anakin, **were not realizable**. Replaying buys and sells on a local Base fork (`scripts/trade-backtest.js`, anvil, ephemeral wallet) showed:
+> - Buying $0.10 at the block of the alert and selling through the real pool: **13 of 17 B2 pools returned 0.00x** (also when quoted +27 min later). They are pools with a **per-token hook, fee 100, tickSpacing 1**; the hook blocks or confiscates sales. Executed on the fork: buy 0.0000436 ETH, sell back 0.000000002 ETH.
+> - The 4 B2 pools that could be sold (hook `0x1f91c998`, fee 0, tickSpacing 200, or no hook) returned **~0.98x at the alert** (a 2% round-trip cost) and are exactly the ones that stayed **flat**; two of them could no longer be sold 27 min later (swap reverts).
+> - **Anakin** (the "organic winner", 35x peak, 22.8x later) has the same per-token-hook pattern: **0.00x** both at the alert block and 30 min later.
+> - Therefore the DexScreener multiples (7x, 9.85x, 22.8x...) are last-trade prices of pools where only buys work. Sections 3-7 below were measured on those prices; **treat every multiple below as "price shown on DexScreener", not as profit**. The realistic return of the family strategy was about **-90%** (average 0.12x of the money at +27 min across the 17 replayed tokens, 15 of 17 unsellable).
+> - The old score was right to punish these tokens (hook -15, LP in a wallet -20, no sell simulation): the "score is inversely related to pumps" finding is a symptom of the honeypots. The V4 LP-in-wallet penalty was **put back to -20** and a real **V4 sell simulation** is now part of the filter (read-only quoter calls: a sale returning < 50% of a small buy is a hard reject).
+> - The automatic trading requested on 2026-11-02 was **not enabled** because of this. Only the mechanics exist (`lib/trader.js`, tested on the fork) and are not connected to the monitor.
+> - Details of the backtest: 20 alerted B2 tokens, 17 replayed (3 failed for RPC/WETH-funding reasons), values below. Gas in Base is ~0.005 gwei: ethers' default 1 gwei tip made the first fork test look 200x more expensive; `lib/trader.js` now sets fees explicitly.
+
 _Read this together with `docs/STATE.md` at the start of a session._ `data/` is git-ignored, so the numbers that matter are kept here.
 All times UTC. Data window of this file: **2026-11-01 12:33 to 2026-11-02 ~07:30** (~19 h, ~1,370 evaluated tokens). **No 24 h checkpoints existed yet** when these were written (the first ones arrive ~12:30Z on 2026-11-02): update this file after them.
 
@@ -35,7 +45,7 @@ Clean peak data, non-serial tokens evaluated after 17:45Z, peak within 1 h of th
 | Rejected | 233 | 55 | 8 (but 124 fell below 0.5x, mostly V2) |
 Excluding the `0xd54345` actor (section 5): score < 40 -> 37 of 58 peaked >= 2x vs 7 of 153 for score >= 40. The penalties that sink these tokens (no V4 sell simulation, LP in a wallet, hooks, few holders) do not separate winners from losers in V4. Pumps happen ~10-30 min after the alert and the price then stays near the peak.
 
-## 4. Family "B2": addresses starting with `0xb2000000…`
+## 4. Family "B2": addresses starting with `0xb2000000…` (multiples are DexScreener prices: NOT realizable, see correction)
 - 134 tokens so far, ~7 launches/hour, 113+ different creators, V4, initial liquidity ~$2.3-2.4k (fixed starting price ~$0.0000023), LP 100% in a wallet. Looks like a launcher/factory template. Not identified on-chain.
 - 87 would be alerted by the final filter (20 were actually alerted at the time); 47 discarded: 24 liquidity < $1,000 (a different template, median 1.6x, max 2.0x), 10 score < 40, 8 serial (flat), 3 generic names (BTC/USD, pumped median 4.3x), 2 impersonation.
 - Alerted-with-final-filter performance (clean peak data, 55 tokens): **peak mean 7.0x, median 7.5x, max 16.2x** (FOTF, alerted 04:38Z, peak 33 min later); 44 of 55 reached >= 2x, 11 stayed flat. Time to peak: median 26 min, mean 27, p90 30 (one outlier 336). Price at 1h (79 tokens): median 5.7x, 64 >= 2x, 47 >= 5x, 1 below 1x (MEOW 0.9x). At 6h (56 tokens): median 5.8x.
@@ -43,14 +53,14 @@ Excluding the `0xd54345` actor (section 5): score < 40 -> 37 of 58 peaked >= 2x 
 - The 20 actually alerted: 1h median 6.6x, 10 of 15 with data >= 2x, 5 flat. The flat ones were off the usual pattern (liquidity $4k-$765k, or never indexed); the typical ~$2.3k launches behaved like the rest.
 - Caveat: the "x" prices are last-trade prices of pools of $2-10k; a sell of any size moves them, V4 has no sell simulation here, and hooks could tax. Nothing was validated forward.
 
-## 5. Actor "D5": LP owner `0xd54345CA46bFB6B44fE6c6eE9B9ccB3838Db680F`
+## 5. Actor "D5" (same caveat: its pools are probably the same kind of honeypot; not backtested): LP owner `0xd54345CA46bFB6B44fE6c6eE9B9ccB3838Db680F`
 - 54 V4 tokens (54 creators) between 12:33Z and 21:26Z, 5-7 per hour, then **stopped (dormant since 2026-11-01 21:26Z)**. ~$2.3-6.6k liquidity, one wallet holds 96.79% of the supply, 111-130 holders, no hook.
 - 36 of 54 reached >= 2x at 1h (median 2.35x, max 2.75x), none below 0.5x, 2 of 42 liquidity drops; peak ~7-13 min after the alert (3-13 min, median 10). Median 24h volume $76k on ~$9k pools, identical at 1h and 6h: looks programmatic/artificial. Not identified.
 
-## 6. Anakin: the one organic winner
+## 6. Anakin: looked organic, but is unsellable (0.00x in the backtest)
 `0x8EE421C2dd577EA6c7699d225c156017265DEB14` ("Anakin Skywalker", V4 with a hook, score 40 = the bare minimum). Alerted 2026-11-02 02:34Z at liquidity $8k. Peak **35.2x** at 24 min, 6.7x at 1h, 22.8x at ~07:00Z; liquidity $8k -> $64k; 2,479 transactions in 6 h ($848k volume) but none in the last hour. It had penalties for clone symbol, no sell simulation, hook and LP 100% in a wallet: a stricter threshold would have missed it.
 
-## 7. Simulation: 1 cent in every alert, value now vs alert price (~07:00Z 2026-11-02)
+## 7. Simulation: 1 cent in every alert, value now vs alert price (paper values from DexScreener prices; most of the profit could not have been cashed in) (~07:00Z 2026-11-02)
 | Set | Result |
 |---|---|
 | Alerts since 15:45Z (288; unpriced counted as lost) | $2.88 -> $3.55 = **+23%** (+48% if unpriced are excluded) |
@@ -72,8 +82,17 @@ Almost all profit comes from ~10 alerts. 48 of 288 alerts since 15:45Z had no pr
 3. Can the family hold time/multiple (hard-coded in `lib/families.js`) be recalibrated, and is selling possible at those prices (V4 sell simulation not implemented)?
 4. Do the V3 and V4 rule changes hold at 24 h?
 
+## 9. Backtest of buying at the alert and selling at +27 min (the realistic test)
+`node scripts/trade-backtest.js 20 27` (anvil fork, state at the alert block, $0.10 buy, quoter for the sale):
+| Group | Tokens | Sale at the alert block | Sale at +27 min |
+|---|---|---|---|
+| Per-token hook, fee 100, tickSpacing 1 (the pumping pools) | 13 | 0.00x | 0.00x |
+| Hook `0x1f91c998` (fee 0, tickSpacing 200) | 3 | 0.98x | 0.98x (NOVEMBAG), swap reverts (REDTOBER, LASTBUYER) |
+| No hook (fee 9000) | 1 | 0.98x | 0.98x |
+Average value of the $0.10 positions: 0.23x if sold at once, 0.12x at +27 min. Gas for a round trip on Base is ~$0.01-0.02 (to be re-measured; not in these numbers).
+
 ## Forward test in progress
-From 2026-11-02 ~08:00Z every family alert is followed by a sell alert at the family's hold time and `data/sell-alerts.jsonl` stores the multiple obtained. Compare it with the expectations in section 4 (B2: peak 7.5x / 5.7x at 1h) to see whether the family rule holds out of sample.
+(Obsolete after the correction: family sell alerts are disabled because the families are `tradable: false`.) From 2026-11-02 ~08:00Z to ~10:00Z every family alert was followed by a sell alert at the family's hold time and `data/sell-alerts.jsonl` stores the multiple obtained. Compare it with the expectations in section 4 (B2: peak 7.5x / 5.7x at 1h) to see whether the family rule holds out of sample.
 
 ## How to reproduce
 - `node scripts/analyze.js [--serial-min N] [--since ISO_DATE]`: all tokens / serial / non-serial / per version, 1h-6h-24h outcomes, peaks, false positives, reaction time. Use `--since 2026-11-01T17:45:00Z` for clean peak data and `--since 2026-11-01T15:45:00Z` for the filter after the first change.

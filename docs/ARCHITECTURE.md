@@ -22,6 +22,10 @@ state: data/state.json (also running peak/trough per watched token)   output: da
 4. **Untrusted data.** Token names and symbols are attacker-controlled: they are escaped before being sent to Telegram, and token calls use low-level tolerant reads.
 5. **No keys.** The bot only reads the chain; it needs no private key.
 
+## V4 sell simulation
+
+honeypot.is does not support V4, so `lib/filters.js` calls `v4Sellability` (in `lib/trader.js`): it rebuilds the PoolKey from the pool's `Initialize` event, checks that it hashes to the pool id, and asks the V4 Quoter (read-only) for a small buy and then for the sale of what it returns. A round trip below 50% is a hard reject (hooks that block or confiscate sales). A backtest showed this is the dominant failure mode of the pools that pump.
+
 ## Families
 
 `lib/families.js` lists groups of tokens that launch and behave alike (today: addresses starting with `0xb2000000…` and pools whose LP is owned by `0xd54345…`). Each family carries hard-coded historical statistics (hold time = median minutes to the price peak, expected multiple, history). They come from the first ~19 h of data and are not validated forward; see [FINDINGS.md](FINDINGS.md). `lib/message.js` adds the family block to the Telegram alert and `monitor.js` stores the family id in each `new-tokens.jsonl` record. The same run also sends the **sell alert**: the watch entry of an alerted family token keeps `family`, the alert price (`p0`) and the last sampled price; when the token's age reaches the family's `holdMin` (and a price no older than 2.5 min exists, or 5 more minutes have passed) the monitor queues `buildSellMessage` once per token and appends the result to `data/sell-alerts.jsonl`.

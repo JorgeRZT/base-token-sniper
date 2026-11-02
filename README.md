@@ -96,6 +96,7 @@ See `.env.example`. Main variables: `INFURA_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TEL
 
 - `npm run latest:v3 -- 20 20000`: prints the latest V3 pools by scanning `PoolCreated` events (manual, standalone).
 - `npm run analyze -- [--serial-min N] [--since ISO_DATE]`: analysis of `data/new-tokens.jsonl` + `data/outcomes.jsonl` (serial vs other creators, per version, 1h/6h/24h outcomes, peaks, reaction time). Conclusions so far: [docs/FINDINGS.md](docs/FINDINGS.md).
+- `node scripts/trade-backtest.js [N] [holdMin] [family]`: backtest of buy-at-alert / sell-later on a local fork (needs Foundry's `anvil` and an RPC with archive state). Showed that the pumping V4 pools of the families cannot be sold; see FINDINGS.md.
 - `npm run alert:preview [-- --send]`: shows (and optionally sends) a sample alert for an isolated token and a family token.
 
 ## Project layout
@@ -105,6 +106,8 @@ scripts/monitor.js           the bot (one pass, run by cron)
 scripts/telegram-test.js     Telegram test / chat-id finder
 scripts/analyze.js           offline analysis of the jsonl outputs
 scripts/alert-preview.js     sample alerts (isolated token / family token)
+scripts/trade-fork-test.js   buy -> sell round trips on a local anvil fork of Base (no real funds)
+scripts/trade-backtest.js    replays buying at each alert and selling after N minutes on historical blocks
 scripts/latest-v3.js         manual V3 pool listing
 lib/config.js                addresses, provider, helpers
 lib/filters.js               scoring and rejection rules
@@ -112,7 +115,8 @@ lib/impersonation.js         known-token / brand impersonation
 lib/holders.js               holder distribution from Transfer events
 lib/lp.js                    LP ownership (burned / contract / wallet) for V2, V3, V4
 lib/telegram.js              Telegram delivery
-lib/families.js              known token families (hold time, expected multiple)
+lib/families.js              known token families (currently flagged tradable: false)
+lib/trader.js               V4 quote / buy / sell mechanics (Universal Router + Permit2); used by the sell simulation, not connected to automatic trading
 lib/message.js               alert text
 docs/                        ARCHITECTURE.md, FILTERS.md, STATE.md (project status), FINDINGS.md (analysis results)
 ```

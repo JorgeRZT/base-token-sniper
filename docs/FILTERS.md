@@ -13,6 +13,7 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 | Sell simulation says it is a honeypot | honeypot.is |
 | Buy or sell tax above `MAX_TAX_PCT` (default 25%) | honeypot.is |
 | Known liquidity below `MIN_LIQUIDITY_USD` (default $1,000) | DexScreener |
+| **V4 sell simulation**: a small buy cannot be sold back for >= 50% (hook blocks or confiscates sales, or the sale reverts) | V4 Quoter via `lib/trader.js` (`v4Sellability`) |
 
 ## Score penalties
 
@@ -24,7 +25,7 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 | Liquidity unknown (not indexed after `DEX_WAIT_MIN`) | -10 |
 | Liquidity under $5,000 | -10 |
 | Tax between 10% and `MAX_TAX_PCT` | -20 |
-| Sell simulation unavailable (always the case for V4) | -10 |
+| Sell simulation unavailable (V2/V3 without honeypot.is data; V4 when the quoter cannot simulate the pool) | -10 |
 | Bytecode has `mint` / blacklist / `pause` / tax setter | -15 / -15 / -10 / -5 |
 | Upgradeable proxy (EIP-1967) | -15 |
 | `owner()` not renounced | -5 |
@@ -32,7 +33,7 @@ The filters are deliberately **flexible**: early tokens that later pump often ha
 | One wallet (top holder or pool creator) holds 20-49% / 50% or more of the supply | -10 / -20 |
 | Fewer than 5 holders | -5 |
 | Holder distribution unavailable | -5 |
-| 50%+ of the LP is in a regular wallet, V4 (only 2 of 568 collapsed in the first 18h) | -5 |
+| 50%+ of the LP is in a regular wallet (V4; the lower penalty tried on 2026-11-02 morning was reverted) | -20 |
 | 50%+ of the LP is in a contract (may be a locker, verify) | -5 |
 | LP split between several kinds of owner | -10 |
 | LP ownership unreadable | -5 |
