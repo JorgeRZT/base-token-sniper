@@ -24,7 +24,7 @@ state: data/state.json (also running peak/trough per watched token)   output: da
 
 ## Families
 
-`lib/families.js` lists groups of tokens that launch and behave alike (today: addresses starting with `0xb2000000…` and pools whose LP is owned by `0xd54345…`). Each family carries hard-coded historical statistics (hold time = median minutes to the price peak, expected multiple, history). They come from the first ~19 h of data and are not validated forward; see [FINDINGS.md](FINDINGS.md). `lib/message.js` adds the family block to the Telegram alert and `monitor.js` stores the family id in each `new-tokens.jsonl` record.
+`lib/families.js` lists groups of tokens that launch and behave alike (today: addresses starting with `0xb2000000…` and pools whose LP is owned by `0xd54345…`). Each family carries hard-coded historical statistics (hold time = median minutes to the price peak, expected multiple, history). They come from the first ~19 h of data and are not validated forward; see [FINDINGS.md](FINDINGS.md). `lib/message.js` adds the family block to the Telegram alert and `monitor.js` stores the family id in each `new-tokens.jsonl` record. The same run also sends the **sell alert**: the watch entry of an alerted family token keeps `family`, the alert price (`p0`) and the last sampled price; when the token's age reaches the family's `holdMin` (and a price no older than 2.5 min exists, or 5 more minutes have passed) the monitor queues `buildSellMessage` once per token and appends the result to `data/sell-alerts.jsonl`.
 
 ## Limitations
 

@@ -16,12 +16,13 @@ A "Base token sniper" **detection** bot: find freshly deployed tokens on Uniswap
 https://github.com/JorgeRZT/base-token-sniper (public, branch `main`, MIT). `.env` and `data/` are git-ignored; never commit secrets.
 
 ## Running now
-Cron runs the monitor every minute since 2026-11-01 ~12:30Z (24 h run). **With Telegram enabled, every alerted token is now sent: ~450-600 alerts/day**, of which only ~10 later peaked >= 2x. Digest/selection of alerts is still pending (see below).
+Cron runs the monitor every minute since 2026-11-01 ~12:30Z (24 h run). **With Telegram enabled, every alerted token is now sent: ~450-600 buy alerts/day plus ~4-5 family sell alerts/hour**, of which only ~10 later peaked >= 2x. Digest/selection of alerts is still pending (see below).
 
 ## Filter / code changes timeline (data before and after is not directly comparable)
 - 2026-11-01 15:45Z: V2 with LP >= 50% in a wallet = reject; serial deployer (5+ other tokens from the same creator in 6 h) = reject; brand-name penalty -10 -> -30.
 - 2026-11-01 ~17:41Z: peak/trough tracking in `outcomes.jsonl` (`baseline*`, `peak*`, `min*`). Clean peak data only for tokens evaluated after 17:45Z.
 - 2026-11-02 ~07:15Z: V3 with LP >= 50% in a wallet = reject; V4 LP-in-wallet penalty -20 -> -5; price path (`path`) in outcomes.
+- 2026-11-02 ~08:00Z: **family sell alert** (`buildSellMessage`, `data/sell-alerts.jsonl`): when an alerted family token reaches the family's hold time the user gets a "SELL NOW" message with the result vs the alert price. Only tokens alerted after this change have it.
 - 2026-11-02 ~07:30Z: family block in alerts (`lib/families.js`, `lib/message.js`), `family` field in `new-tokens.jsonl`, `TELEGRAM_CHAT_ID` accepted without `@`.
 
 ## Pending (not done)
@@ -30,7 +31,7 @@ Cron runs the monitor every minute since 2026-11-01 ~12:30Z (24 h run). **With T
 3. **Change how alerts are delivered**: hourly digest of the best candidates plus an immediate alert only for validated patterns (families), instead of ~450-600 alerts/day. Possible option: `TELEGRAM_ONLY_FAMILIES`.
 4. **Policy for tokens without indexed liquidity** (48 of 288 alerts since 15:45Z had no price): leave them out of alerts or put them in a separate category.
 5. **Log more token features** (deployer/factory contract, known launchpad LP owner) to test whether the B2 and D5 patterns predict pumps or were a coincidence of the first 19 h; also log the time of the last trade to measure token "life".
-6. **Forward paper-trading test** of the family rule (price at +N min after each alert) before any buy logic.
+6. **Forward test of the family rule**: `data/sell-alerts.jsonl` now records the multiple obtained at the hold time for every family alert; compare it with `lib/families.js` (expected 7.5x peak / 5.7x cautious for B2) before any buy logic.
 - Do not hard-code more rules for families before validating forward.
 - Other ideas: flag implausible DexScreener liquidity (a clone showed $30M), recognise locker contracts (`LOCKER_ADDRESSES`), delayed alerts to filter early rugs, WebSocket instead of polling, V3 manual-listing tool cleanup.
 

@@ -3,8 +3,8 @@
 // data/new-tokens.jsonl. With --send, both are sent to Telegram (prefixed with a TEST marker).
 require("dotenv").config();
 const fs = require("fs");
-const { buildMessage } = require("../lib/message");
-const { classifyFamily } = require("../lib/families");
+const { buildMessage, buildSellMessage } = require("../lib/message");
+const { classifyFamily, FAMILIES } = require("../lib/families");
 const { sendTelegram, enabled } = require("../lib/telegram");
 
 const recs = fs.readFileSync("data/new-tokens.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l));
@@ -14,8 +14,18 @@ const fam = alerted.filter((r) => classifyFamily(r)?.id === "B2" && r.dexscreene
 if (!solo || !fam) throw new Error("Need at least one alerted isolated token and one alerted B2 token in data/new-tokens.jsonl");
 
 (async () => {
-  for (const [label, rec] of [["ISOLATED TOKEN", solo], ["FAMILY TOKEN", fam]]) {
-    const msg = `🧪 <b>TEST · ${label}</b> (real past record)\n\n${buildMessage(rec)}`;
+  // Sell alert sample: a real past B2 token, using its price at the 1h checkpoint as the "sell" price (simulated).
+  const outs = fs.existsSync("data/outcomes.jsonl") ? fs.readFileSync("data/outcomes.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [];
+  const sellRec = alerted.filter((r) => classifyFamily(r)?.id === "B2" && r.token.symbol && r.token.symbol !== "?" && outs.some((o) => o.token.toLowerCase() === r.token.address.toLowerCase() && o.checkpointHours === 1 && o.peakPriceUsd > 0 && o.baselinePriceUsd > 0 && +o.priceUsd > o.baselinePriceUsd * 3)).slice(-1)[0];
+  const sellOut = sellRec && outs.find((o) => o.token.toLowerCase() === sellRec.token.address.toLowerCase() && o.checkpointHours === 1);
+  const sellMsg = sellRec && (() => {
+    const f = FAMILIES.find((x) => x.id === "B2");
+    const res = { ageMin: f.holdMin, alertPriceUsd: sellOut.baselinePriceUsd, priceUsd: +sellOut.priceUsd, multiple: +sellOut.priceUsd / sellOut.baselinePriceUsd, peakMultiple: sellOut.peakPriceUsd / sellOut.baselinePriceUsd, peakAfterMin: sellOut.peakPriceAfterMin, liquidityUsd: sellOut.liquidityUsd };
+    return buildSellMessage({ w: { token: sellRec.token.address, name: sellRec.token.name, symbol: sellRec.token.symbol, pool: sellRec.pool }, fam: f, res });
+  })();
+  for (const [label, rec, text] of [["ISOLATED TOKEN", solo, null], ["FAMILY TOKEN", fam, null], ["FAMILY SELL ALERT (simulated with the 1h price of a real past token)", sellRec, sellMsg]]) {
+    if (!rec) continue;
+    const msg = `🧪 <b>TEST · ${label}</b> (real past record)\n\n${text || buildMessage(rec)}`;
     console.log(`\n--- ${label}: ${rec.token.symbol} ${rec.token.address}\n${msg.replace(/<[^>]+>/g, "")}`);
     if (process.argv.includes("--send")) {
       if (!enabled()) { console.log("Telegram is not configured."); continue; }

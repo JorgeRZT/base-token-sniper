@@ -72,6 +72,9 @@ Almost all profit comes from ~10 alerts. 48 of 288 alerts since 15:45Z had no pr
 3. Can the family hold time/multiple (hard-coded in `lib/families.js`) be recalibrated, and is selling possible at those prices (V4 sell simulation not implemented)?
 4. Do the V3 and V4 rule changes hold at 24 h?
 
+## Forward test in progress
+From 2026-11-02 ~08:00Z every family alert is followed by a sell alert at the family's hold time and `data/sell-alerts.jsonl` stores the multiple obtained. Compare it with the expectations in section 4 (B2: peak 7.5x / 5.7x at 1h) to see whether the family rule holds out of sample.
+
 ## How to reproduce
 - `node scripts/analyze.js [--serial-min N] [--since ISO_DATE]`: all tokens / serial / non-serial / per version, 1h-6h-24h outcomes, peaks, false positives, reaction time. Use `--since 2026-11-01T17:45:00Z` for clean peak data and `--since 2026-11-01T15:45:00Z` for the filter after the first change.
 - Per-token joins used here: `data/new-tokens.jsonl` (`alerted`, `verdict`, `dexscreener`, `creator`, `family`) with `data/outcomes.jsonl` (`checkpointHours`, `priceUsd`, `baselinePriceUsd`, `peakPriceUsd`, `peakPriceAfterMin`, `minPriceUsd`, `path`) and a live DexScreener batch query for "now" prices. These ad-hoc joins were temporary scripts; the main parts live in `scripts/analyze.js`.

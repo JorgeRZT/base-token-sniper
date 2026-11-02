@@ -15,14 +15,17 @@ const { ADDRESSES, getProvider, tokenInfo, pickNewToken } = require("../lib/conf
 const { evaluate, cfg } = require("../lib/filters");
 const { norm } = require("../lib/impersonation");
 const { enabled: telegramEnabled, sendTelegram } = require("../lib/telegram");
-const { classifyFamily } = require("../lib/families");
-const { buildMessage } = require("../lib/message");
+const { classifyFamily, FAMILIES } = require("../lib/families");
+const { buildMessage, buildSellMessage } = require("../lib/message");
 
 const DATA = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA, "state.json");
 const LOCK_FILE = path.join(DATA, "monitor.lock");
 const OUT_FILE = path.join(DATA, "new-tokens.jsonl");
 const OUTCOMES_FILE = path.join(DATA, "outcomes.jsonl");
+const SELL_FILE = path.join(DATA, "sell-alerts.jsonl"); // every family sell alert with the result it reported (forward test of the family rule)
+const SELL_PRICE_MAX_AGE_MS = 150e3; // a sell alert needs a price sampled in the last 2.5 min
+const SELL_GIVE_UP_MIN = 5; // after holdMin + this, send the sell alert even without a fresh price
 const CHECKPOINT_HOURS = [1, 6, 24]; // follow-up checks on every evaluated token
 const MAX_CHECKS_PER_RUN = 40;
 const PEAK_BATCH = 30; // DexScreener batch endpoint accepts up to 30 addresses
@@ -106,6 +109,7 @@ function track(w, d) {
   w.lastSample = Date.now();
   if (!d) return;
   const price = Number(d.priceUsd), liq = Number(d.liquidityUsd);
+  if (price > 0) { w.pLast = price; w.pLastAt = Date.now(); }
   if (price > 0) {
     if (!(w.p0 > 0)) w.p0 = price; // baseline = first price seen (the one at evaluation, or the first sample if it was not indexed yet)
     if (!(price <= (w.pMax || 0))) { w.pMax = price; w.pMaxAt = Date.now(); }
@@ -118,6 +122,7 @@ function track(w, d) {
       if (w.path[off] === undefined && ageMin >= off && ageMin <= off + PATH_MAX_LATE_MIN) w.path[off] = [Math.round(ageMin * 10) / 10, price, liq > 0 ? liq : null]; // [actual age in min, price, liquidity]
     }
   }
+  if (liq > 0) w.lLast = liq;
   if (liq > 0) {
     if (!(w.l0 > 0)) w.l0 = liq;
     if (!(liq <= (w.lMax || 0))) w.lMax = liq;
@@ -202,6 +207,7 @@ async function main() {
       family: null,
     };
     record.family = classifyFamily(record)?.id ?? null; // known token family (see lib/families.js)
+    Object.assign(state.watch[key], { alerted: verdict.passes, family: record.family, name: info.name, symbol: info.symbol, pool: p.pool }); // used by the family sell alert
     fs.appendFileSync(OUT_FILE, JSON.stringify(record) + "\n");
     console.log(`[${verdict.passes ? "ALERT" : "SKIP"} ${p.version.toUpperCase()}] ${info.name} (${info.symbol}) ${p.token} ${verdict.level} score=${verdict.score}` +
       (verdict.reject ? ` reject="${verdict.reject}"` : ""));
@@ -225,6 +231,27 @@ async function main() {
     const chunk = sampling.slice(i, i + PEAK_BATCH);
     const res = await dexscreenerBatch(chunk.map((w) => w.token));
     for (const w of chunk) track(w, res.get(w.token.toLowerCase()) ?? null);
+  }
+
+  // 3a'. family sell alerts: once an alerted family token reaches the family's hold time, tell the user to sell and what the trade made
+  for (const [key, w] of Object.entries(state.watch)) {
+    if (!w.alerted || !w.family || w.sold) continue;
+    const fam = FAMILIES.find((f) => f.id === w.family);
+    if (!fam) continue;
+    const ageMin = (Date.now() - w.t0) / 60000;
+    if (ageMin < fam.holdMin) continue;
+    const fresh = w.pLast > 0 && Date.now() - (w.pLastAt || 0) <= SELL_PRICE_MAX_AGE_MS;
+    if (!fresh && ageMin < fam.holdMin + SELL_GIVE_UP_MIN) continue; // wait for a fresh price for a few minutes
+    const res = {
+      ts: new Date().toISOString(), token: w.token, symbol: w.symbol, family: fam.id, ageMin: Math.round(ageMin * 10) / 10,
+      alertPriceUsd: w.p0 ?? null, priceUsd: fresh ? w.pLast : null, multiple: fresh && w.p0 > 0 ? w.pLast / w.p0 : null,
+      peakMultiple: w.pMax > 0 && w.p0 > 0 ? w.pMax / w.p0 : null, peakAfterMin: w.pMaxAt ? Math.round((w.pMaxAt - w.t0) / 60000) : null,
+      liquidityUsd: fresh ? (w.lLast ?? null) : null,
+    };
+    w.sold = true;
+    fs.appendFileSync(SELL_FILE, JSON.stringify(res) + "\n");
+    console.log(`[SELL ${fam.id}] ${w.symbol} ${w.token} after ${res.ageMin} min: ${res.multiple ? res.multiple.toFixed(2) + "x" : "no price"}`);
+    if (telegramEnabled()) state.unsent.push(buildSellMessage({ w, fam, res }));
   }
 
   // 3b. follow-up: what happened to each evaluated token after 1h / 6h / 24h (data for tuning the filters)
